@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>人工审核面板 · 跨境售后系统</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="header">
+  <h1>人工审核面板</h1>
+  <span class="badge">REVIEW</span>
+  <a href="/" style="color:#fff;margin-left:auto;font-size:13px;">← 返回主面板</a>
+</div>
+
+<div class="container">
+  <div id="notifBar" style="display:none;"></div>
+
+  <div class="card">
+    <h3>待审核工单</h3>
+    <div id="pendingQueue">
+      <div style="color:#999;text-align:center;padding:40px;">Loading...</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>已处理工单（最近 20 条）</h3>
+    <div id="processedList">
+      <div style="color:#999;text-align:center;padding:20px;">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showNotif(msg, type) {
+  var bar = document.getElementById("notifBar");
+  bar.style.cssText = "padding:14px 20px;border-radius:6px;margin-bottom:16px;border:1px solid;display:flex;justify-content:space-between;align-items:center;";
+  if (type === "success") {
+    bar.style.background = "#d4edda";
+    bar.style.color = "#155724";
+    bar.style.borderColor = "#c3e6cb";
+  } else {
+    bar.style.background = "#f8d7da";
+    bar.style.color = "#721c24";
+    bar.style.borderColor = "#f5c6cb";
+  }
+  bar.innerHTML = msg;
+  bar.style.display = "flex";
+  setTimeout(function(){ bar.style.display = "none"; }, 12000);
+}
+
+async function loadQueue() {
+  const resp = await fetch("/api/review");
+  const data = await resp.json();
+
+  // Pending
+  const pendingEl = document.getElementById("pendingQueue");
+  if (data.pending.length === 0) {
+    pendingEl.innerHTML = '<div style="color:#999;text-align:center;padding:40px;">当前无待审核工单</div>';
+  } else {
+    pendingEl.innerHTML = data.pending.map(function(t) {
+      var msg = t.customer_message || "";
+      var reason = t.decision_reason || "High risk case";
+      return '<div style="border:1px solid #ddd;border-radius:6px;padding:16px;margin-bottom:12px;">' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:8px;">' +
+          '<strong>' + esc(t.ticket_id) + '</strong>' +
+          '<span class="badge-risk-high">HIGH RISK</span>' +
+        '</div>' +
+        '<table>' +
+          '<tr><td>订单</td><td>' + esc(t.order_id) + '</td></tr>' +
+          '<tr><td>客户消息</td><td>' + esc(msg) + '</td></tr>' +
+          '<tr><td>意图</td><td>' + esc(t.intent) + ' / ' + esc(t.subtype) + '</td></tr>' +
+          '<tr><td>审核理由</td><td>' + esc(reason) + '</td></tr>' +
+        '</table>' +
+        '<div style="margin-top:12px;display:flex;gap:8px;">' +
+          '<button class="btn btn-primary btn-sm" onclick="review(this,\'' + escAttr(t.ticket_id) + '\',\'approve\',' + (t.refund_amount || 0) + ')">批准退款</button>' +
+          '<button class="btn btn-sm" style="background:#e8eaed" onclick="review(this,\'' + escAttr(t.ticket_id) + '\',\'reject\')">驳回</button>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+  }
+
+  // Processed
+  const procEl = document.getElementById("processedList");
+  if (data.processed.length === 0) {
+    procEl.innerHTML = '<div style="color:#999;text-align:center;padding:20px;">暂无已处理工单</div>';
+  } else {
+    procEl.innerHTML = '<table>' +
+      '<tr><th>工单</th><th>订单</th><th>意图</th><th>动作</th><th>金额</th><th>审核</th><th>回复</th></tr>' +
+      data.processed.slice().reverse().map(function(t) {
+        var preview = t.response ? t.response.substring(0, 40) + (t.response.length > 40 ? "..." : "") : "(无回复)";
+        return '<tr>' +
+          '<td>' + esc(t.ticket_id) + '</td>' +
+          '<td>' + esc(t.order_id) + '</td>' +
+          '<td>' + esc(t.intent) + '/' + esc(t.subtype) + '</td>' +
+          '<td>' + esc(t.decision_action) + '</td>' +
+          '<td>' + (t.refund_amount ? "$" + t.refund_amount : "-") + '</td>' +
+          '<td>' + (t.review_action || "auto") + '</td>' +
+          '<td><a href="#" onclick="event.preventDefault();showResponse(\'' + escAttr(t.ticket_id) + '\')">查看</a></td>' +
+        '</tr>';
+      }).join("") +
+    '</table>';
+  }
+}
+
+function showResponse(ticketId) {
+  // Find the ticket in the processed data
+  // Simple approach: get the ticket's response from the API
+  fetch("/api/review").then(function(r){ return r.json(); }).then(function(data){
+    var all = data.processed.concat(data.pending);
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].ticket_id === ticketId) {
+        var text = all[i].response || "(无回复)";
+        var win = window.open("", "_blank", "width=600,height=400");
+        win.document.write('<pre style="font-size:14px;padding:20px;white-space:pre-wrap;">' + esc(text) + '</pre>');
+        return;
+      }
+    }
+    alert("未找到工单: " + ticketId);
+  });
+}
+
+function esc(s) {
+  if (!s) return "";
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function escAttr(s) {
+  if (!s) return "";
+  return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+async function review(btn, ticketId, action, amount) {
+  btn.disabled = true;
+  btn.innerHTML = "提交中...";
+  var body = amount !== undefined
+    ? { ticket_id: ticketId, action: action, amount: amount }
+    : { ticket_id: ticketId, action: action };
+  try {
+    const resp = await fetch("/api/review", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(function(){ return {detail: resp.statusText}; });
+      showNotif("操作失败: " + (err.detail || "服务器错误"), "error");
+      btn.disabled = false;
+      btn.innerHTML = action === "approve" ? "批准退款" : "驳回";
+      return;
+    }
+    const result = await resp.json();
+    const ticket = result.ticket;
+    const respText = ticket && ticket.response ? ticket.response : "";
+    var actionLabel = action === "approve" ? "批准退款" : "驳回";
+    var msg = "<strong>操作成功</strong> — 工单 " + ticketId + " 已" + actionLabel;
+    if (respText) {
+      msg += '<br><br><strong>回复内容：</strong><br><pre style="margin:8px 0;white-space:pre-wrap;font-size:13px;">' + esc(respText.substring(0, 200)) + (respText.length > 200 ? "..." : "") + '</pre>';
+    }
+    showNotif(msg, "success");
+    loadQueue();
+  } catch (e) {
+    showNotif("网络错误: " + e.message, "error");
+    btn.disabled = false;
+    btn.innerHTML = action === "approve" ? "批准退款" : "驳回";
+  }
+}
+
+loadQueue();
+setInterval(loadQueue, 3000);
+</script>
+</body>
+</html>
