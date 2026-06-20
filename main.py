@@ -1,8 +1,7 @@
-"""入口文件：FastAPI 应用 + 静态文件 + 前端模板。"""
+"""Entry point: FastAPI app + static files + frontend templates."""
 import os
 import sys
 
-# 确保模块路径正确
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from fastapi import FastAPI
@@ -14,32 +13,33 @@ import config
 from web.routes import router as api_router
 import db
 
-# ━━ FastAPI 应用 ━━
-# ━━ 数据库初始化（自动建表）━━
 db.init_db()
 
 
 app = FastAPI(
-    title="AI Agent + RPA 混合架构 · 跨境售后系统",
+    title="AI Agent + RPA - Cross-border After-sale System",
     debug=True,
     version="1.0.0",
-    description="跨境电商售后退款 + 异常订单自动处理系统 Demo",
+    description="Cross-border e-commerce after-sale refund + abnormal order auto-processing system Demo",
 )
 
-# ━━ 注册 API 路由 ━━
 app.include_router(api_router, prefix="/api")
 
-# ━━ 挂载静态文件 ━━
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# ━━ 前端页面（dashboard + review）━━
 template_dir = os.path.join(os.path.dirname(__file__), "web", "templates")
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard():
+def showcase():
+    with open(os.path.join(template_dir, "showcase.html"), "r", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/demo", response_class=HTMLResponse)
+def demo():
     with open(os.path.join(template_dir, "dashboard.html"), "r", encoding="utf-8") as f:
         return f.read()
 
@@ -50,9 +50,8 @@ def review_page():
         return f.read()
 
 
-# ━━ 启动 ━━
 if __name__ == "__main__":
-    print(f" Demo 启动: http://{config.HOST}:{config.PORT}")
+    print(f" Demo running at http://{config.HOST}:{config.PORT}")
     print(f"   DEMO_MODE={config.DEMO_MODE}")
     print(f"   LLM_PROVIDER={config.LLM_PROVIDER}")
     uvicorn.run("main:app", host=config.HOST, port=config.PORT, reload=False)
